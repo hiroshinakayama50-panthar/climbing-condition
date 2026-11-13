@@ -318,17 +318,30 @@ async function fetchWeather(force=false){
   if(cached && cached.key === key && !state.data){ state.data = cached; }
   state.loading = true; state.error = null; render();
   try{
-    const p = new URLSearchParams({
+    const base = {
       latitude: state.areas.map(a => a.lat).join(','),
       longitude: state.areas.map(a => a.lon).join(','),
       elevation: state.areas.map(a => (a.elev ?? '') === '' ? 'nan' : a.elev).join(','),
       hourly: HOURLY.join(','),
-      past_days: PAST_DAYS, forecast_days: FORECAST_DAYS,
       timezone: 'Asia/Tokyo', wind_speed_unit: 'ms',
-    });
-    const res = await fetch('https://api.open-meteo.com/v1/forecast?' + p.toString());
-    const json = await res.json();
-    if(!res.ok || json.error) throw new Error(json.reason || `HTTP ${res.status}`);
+    };
+    // 1) 通常の予報サーバー  2) 応答しない場合は Historical Forecast API(同じ予報データを日付範囲で返す)
+    const t = todayJST();
+    const sources = [
+      'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({...base, past_days: PAST_DAYS, forecast_days: FORECAST_DAYS}),
+      'https://historical-forecast-api.open-meteo.com/v1/forecast?' + new URLSearchParams({...base,
+        start_date: ymd(addDays(t, -PAST_DAYS)), end_date: ymd(addDays(t, FORECAST_DAYS - 1))}),
+    ];
+    let json = null, lastErr = null;
+    for(const url of sources){
+      try{
+        const res = await fetchWithTimeout(url, 10000);
+        const j = await res.json();
+        if(!res.ok || j.error) throw new Error(j.reason || `HTTP ${res.status}`);
+        json = j; break;
+      }catch(e){ lastErr = e; }
+    }
+    if(!json) throw lastErr || new Error('unknown');
     const arr = Array.isArray(json) ? json : [json];
     const series = {};
     state.areas.forEach((a, i) => { series[a.id] = toHours(arr[i].hourly); });
@@ -339,6 +352,13 @@ async function fetchWeather(force=false){
   }finally{
     state.loading = false; render();
   }
+}
+
+async function fetchWithTimeout(url, ms){
+  const c = new AbortController(); const timer = setTimeout(() => c.abort(), ms);
+  try{ return await fetch(url, {signal: c.signal}); }
+  catch(e){ throw new Error(e.name === 'AbortError' ? '応答なし' : e.message); }
+  finally{ clearTimeout(timer); }
 }
 
 function toHours(h){
@@ -789,7 +809,7 @@ function renderAreaForm(a){
     const lat = parseFloat(f.lat.value), lon = parseFloat(f.lon.value);
     if(isNaN(lat) || isNaN(lon)) return formErr('先に緯度・経度を入力してください');
     try{
-      const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+      const r = await fetchWithTimeout(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`, 8000);
       const j = await r.json(); if(j.elevation) f.elev.value = Math.round(j.elevation[0]);
     }catch(e){ formErr('標高を取得できませんでした'); }
   });
