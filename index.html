@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2421">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="岩コンディション">
+<title>岩コンディション予報</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f3f1ec; --panel:#ffffff; --ink:#1d2421; --sub:#5d6661; --line:#dedad2;
+  --accent:#2f6b4f; --accent-ink:#ffffff; --chip:#ebe7df;
+  --g5:#1f8a5b; --g4:#6fae3f; --g3:#d9a520; --g2:#d9682b; --g1:#b3372f;
+  --good-bg:#e3f2e8; --good:#1d6b43; --warn-bg:#fbf0d6; --warn:#8a5a00; --bad-bg:#f9e0dc; --bad:#9b2c22;
+  --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141917; --panel:#1d2421; --ink:#e9ece8; --sub:#9aa39e; --line:#2f3833;
+    --accent:#6cc39a; --accent-ink:#0f1412; --chip:#28302c;
+    --good-bg:#1c3328; --good:#8fdcb2; --warn-bg:#3a3018; --warn:#f0c66a; --bad-bg:#3d211d; --bad:#f29a8f;
+    --shadow:none;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",sans-serif;
+  -webkit-text-size-adjust:100%;}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 24px) env(safe-area-inset-left)}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px;width:100%}
+.wrap{max-width:960px;margin:0 auto;padding:0 14px}
+header.top{display:flex;align-items:center;gap:10px;padding:14px 0 6px}
+header.top h1{font-size:19px;margin:0;letter-spacing:.02em;flex:1}
+header.top h1 small{display:block;font-size:11px;color:var(--sub);font-weight:500;letter-spacing:0;margin-top:2px}
+.iconbtn{border:1px solid var(--line);background:var(--panel);border-radius:12px;height:40px;min-width:40px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px}
+.iconbtn.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.section-label{font-size:11px;color:var(--sub);font-weight:700;letter-spacing:.08em;margin:14px 0 6px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-size:14px;white-space:nowrap}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.chip .x{margin-left:6px;opacity:.6}
+.datebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.datebar input[type=date]{width:auto;padding:7px 10px;border-radius:999px}
+.seg{display:inline-flex;background:var(--chip);border-radius:12px;padding:3px}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:9px;font-size:13px}
+.seg button.on{background:var(--panel);font-weight:700;box-shadow:var(--shadow)}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;gap:8px}
+.status{font-size:12px;color:var(--sub)}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:13px;margin:10px 0}
+.notice.err{background:var(--bad-bg);color:var(--bad)}
+.cards{display:grid;gap:10px}
+@media(min-width:720px){.cards{grid-template-columns:1fr 1fr}}
+.card{background:var(--panel);border-radius:16px;padding:14px;box-shadow:var(--shadow);border:1px solid var(--line);display:grid;grid-template-columns:auto 1fr;gap:12px;cursor:pointer;text-align:left;width:100%}
+.card:active{transform:scale(.995)}
+.ring{width:62px;height:62px;position:relative}
+.ring svg{transform:rotate(-90deg)}
+.ring .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.ring .num b{font-size:20px}
+.ring .num span{font-size:13px;margin-top:2px}
+.card h3{margin:0;font-size:16px;display:flex;align-items:center;gap:6px}
+.card h3 .rank{font-size:11px;color:var(--sub);font-weight:700}
+.meta{font-size:12px;color:var(--sub);margin-top:3px;display:flex;flex-wrap:wrap;gap:4px 10px}
+.reasons{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.r{font-size:11.5px;border-radius:7px;padding:3px 7px;line-height:1.3}
+.r.good{background:var(--good-bg);color:var(--good)}
+.r.warn{background:var(--warn-bg);color:var(--warn)}
+.r.bad{background:var(--bad-bg);color:var(--bad)}
+.conf{font-size:10.5px;border:1px solid var(--line);border-radius:6px;padding:1px 5px;color:var(--sub);font-weight:500}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--sub);font-size:14px}
+.empty button{margin-top:10px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:9px 14px;font-size:14px;white-space:nowrap;flex:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.danger{color:var(--bad)}
+.matrix-wrap{overflow-x:auto;background:var(--panel);border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow)}
+table.matrix{border-collapse:collapse;width:100%;font-size:13px}
+.matrix th,.matrix td{padding:8px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+.matrix th{font-size:12px;color:var(--sub);font-weight:700;position:sticky;top:0;background:var(--panel)}
+.matrix td.area{text-align:left;font-weight:700;position:sticky;left:0;background:var(--panel);z-index:1}
+.matrix th.area{position:sticky;left:0;z-index:2}
+.cell{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:58px;padding:6px 4px;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;border:0;line-height:1.15}
+.cell small{font-weight:500;font-size:10.5px;opacity:.95}
+.cell.na{background:var(--chip);color:var(--sub);cursor:default}
+/* sheet */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;display:none}
+.sheet-bg.open{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:94vh;overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;z-index:21;
+  transform:translateY(100%);visibility:hidden;transition:transform .25s ease,visibility 0s .25s;padding:0 0 calc(env(safe-area-inset-bottom) + 20px)}
+.sheet.open{transform:none;visibility:visible;transition:transform .25s ease}
+@media(min-width:720px){.sheet{left:50%;width:720px;margin-left:-360px}}
+.sheet-head{position:sticky;top:0;background:var(--bg);padding:12px 14px 8px;display:flex;align-items:center;gap:8px;z-index:2;border-bottom:1px solid var(--line)}
+.sheet-head h2{font-size:17px;margin:0;flex:1}
+.sheet-head h2 small{display:block;font-size:12px;color:var(--sub);font-weight:500}
+.sheet-body{padding:12px 14px}
+.panel{background:var(--panel);border-radius:16px;padding:14px;border:1px solid var(--line);margin-bottom:12px}
+.panel h4{margin:0 0 10px;font-size:13px;color:var(--sub);letter-spacing:.04em}
+.big{display:flex;align-items:center;gap:14px}
+.big .ring{width:84px;height:84px}
+.big .ring .num b{font-size:28px}
+.bars{display:grid;gap:8px;flex:1}
+.bar{display:grid;grid-template-columns:86px 1fr 30px;align-items:center;gap:8px;font-size:12px}
+.bar .track{height:8px;background:var(--chip);border-radius:99px;overflow:hidden}
+.bar .fill{height:100%;border-radius:99px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+@media(min-width:520px){.stats{grid-template-columns:repeat(4,1fr)}}
+.stat{background:var(--chip);border-radius:12px;padding:9px 10px}
+.stat span{display:block;font-size:11px;color:var(--sub)}
+.stat b{font-size:16px}
+.chartbox{position:relative;height:230px}
+.links{display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
+.links a{color:var(--accent)}
+.daynav{display:flex;gap:6px}
+/* forms */
+.form{display:grid;gap:10px}
+.form label{font-size:12px;color:var(--sub);display:grid;gap:4px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.checks{display:flex;flex-wrap:wrap;gap:6px}
+.checks label{display:inline-flex;align-items:center;gap:5px;background:var(--chip);border-radius:8px;padding:6px 9px;font-size:13px;color:var(--ink)}
+.checks input{width:auto;margin:0}
+.arealist{display:grid;gap:8px}
+.arealist .item{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.arealist .item div{flex:1;min-width:0}
+.arealist .item b{display:block;font-size:14px}
+.arealist .item small{color:var(--sub);font-size:11.5px}
+.results{display:grid;gap:4px}
+.results button{text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;font-size:13px}
+.hint{font-size:11.5px;color:var(--sub);line-height:1.5}
+.dialog{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:20px}
+.dialog.open{display:flex}
+.dialog .box{background:var(--panel);border-radius:16px;padding:18px;max-width:360px;width:100%}
+.dialog .box p{margin:0 0 14px;font-size:14px;line-height:1.6}
+.dialog .box .acts{display:flex;justify-content:flex-end;gap:8px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+footer{font-size:11px;color:var(--sub);margin-top:28px;line-height:1.7}
+footer a{color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>岩コンディション予報<small id="subtitle">エリア×日付でクライミング適性を評価</small></h1>
+    <button class="iconbtn" id="btnAreas" aria-label="エリア管理">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>エリア
+    </button>
+    <button class="iconbtn" id="btnRefresh" aria-label="更新">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+  </header>
+
+  <div class="section-label">アクティビティ</div>
+  <div class="chips" id="actChips"></div>
+
+  <div class="section-label">日付</div>
+  <div class="datebar">
+    <div class="chips" id="dateChips" style="flex:1;min-width:0"></div>
+  </div>
+  <div class="datebar" style="margin-top:8px">
+    <button class="chip" id="addToday">+ 今日</button>
+    <button class="chip" id="addTomorrow">+ 明日</button>
+    <input type="date" id="dateInput" aria-label="日付を追加">
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="viewSeg">
+      <button data-v="rank" class="on">ランキング</button>
+      <button data-v="matrix">比較表</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+  <div id="notices"></div>
+  <div id="main"></div>
+
+  <footer>
+    気象データ:<a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>(CC BY 4.0)。
+    スコアは気象予報からの推定で、岩の状態・沢の水量・雷の発生を保証するものではありません。現地の状況と最新の気象情報(気象庁の警報・注意報、雷ナウキャスト等)を必ず確認してください。
+  </footer>
+</div>
+
+<!-- detail sheet -->
+<div class="sheet-bg" id="sheetBg"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="sheet-head">
+    <h2 id="sheetTitle"></h2>
+    <div id="sheetTools"></div>
+    <button class="iconbtn" id="sheetClose" aria-label="閉じる">✕</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- confirm dialog -->
+<div class="dialog" id="dialog"><div class="box"><p id="dialogMsg"></p><div class="acts"><button class="btn" id="dialogNo">キャンセル</button><button class="btn primary" id="dialogYes">OK</button></div></div></div>
+
+<script>
+'use strict';
+/* =========================================================
+   定義
+   ========================================================= */
+const ACTIVITIES = {
+  boulder:{ label:'外岩ボルダー', window:[8,17], temp:{ideal:[3,15], ok:[-3,24]}, windLimit:15,
+    weights:{rain:.35, dry:.35, friction:.25, wind:.05}, rock:true },
+  route:{ label:'外岩ルート', window:[8,17], temp:{ideal:[8,20], ok:[0,28]}, windLimit:12,
+    weights:{rain:.35, dry:.30, friction:.20, wind:.15}, rock:true },
+  multi:{ label:'マルチピッチ', window:[6,16], temp:{ideal:[10,22], ok:[2,29]}, windLimit:10,
+    weights:{rain:.40, dry:.25, friction:.10, wind:.25}, rock:true },
+  stream:{ label:'沢登り', window:[7,16], temp:{ideal:[24,32], ok:[17,36]}, windLimit:14,
+    weights:{rain:.35, flood:.40, friction:.20, wind:.05}, rock:false },
+  alpine:{ label:'アルパイン', window:[4,14], temp:{ideal:[3,18], ok:[-8,25]}, windLimit:12,
+    weights:{rain:.40, dry:.15, friction:.10, wind:.35}, rock:true },
+};
+const ROCKS = {
+  granite:{label:'花崗岩', dry:1.2, absorb:0.9},
+  andesite:{label:'安山岩・溶岩', dry:1.0, absorb:1.0},
+  limestone:{label:'石灰岩', dry:1.1, absorb:0.9},
+  chert:{label:'チャート', dry:1.0, absorb:1.0},
+  conglomerate:{label:'礫岩', dry:0.8, absorb:1.2},
+  sandstone:{label:'砂岩', dry:0.6, absorb:1.4},
+  other:{label:'その他', dry:1.0, absorb:1.0},
+};
+const ASPECTS = {S:{label:'南向き',f:1.3},E:{label:'東向き',f:1.05},W:{label:'西向き',f:1.05},N:{label:'北向き',f:0.6},MIX:{label:'混在',f:1.0}};
+const CANOPY = {open:{label:'開けている',f:1.2},partial:{label:'半樹林',f:0.9},forest:{label:'樹林内',f:0.6}};
+const DEFAULT_AREAS = [
+  {id:'ogawayama', name:'小川山(廻り目平)', lat:35.9070, lon:138.6180, elev:1570, rock:'granite', aspect:'MIX', canopy:'partial', acts:['boulder','route','multi'], memo:''},
+  {id:'mizugaki', name:'瑞牆', lat:35.8830, lon:138.5930, elev:1600, rock:'granite', aspect:'S', canopy:'partial', acts:['boulder','route','multi'], memo:''},
+  {id:'jogasaki', name:'城ヶ崎', lat:34.9050, lon:139.1370, elev:20, rock:'andesite', aspect:'E', canopy:'open', acts:['boulder','route'], memo:''},
+  {id:'yugawara', name:'湯河原幕岩', lat:35.1380, lon:139.0940, elev:250, rock:'andesite', aspect:'S', canopy:'partial', acts:['route','boulder'], memo:''},
+];
+const HOURLY = ['temperature_2m','relative_humidity_2m','dew_point_2m','precipitation_probability','precipitation',
+  'weather_code','cloud_cover','wind_speed_10m','wind_gusts_10m','shortwave_radiation','et0_fao_evapotranspiration','cape'];
+const PAST_DAYS = 3, FORECAST_DAYS = 16;
+const WD = ['日','月','火','水','木','金','土'];
+
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const clamp = (v,a=0,b=100) => Math.max(a, Math.min(b, v));
+const avg = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : NaN;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+};
+function ymd(d){ const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
+// 端末のタイムゾーンに依存しないよう、日本時間の「今日」を求める
+function todayJST(){ const n = new Date(Date.now() + (9*60 + new Date().getTimezoneOffset())*60000); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+function parseYmd(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function fmtDate(s){ const d = parseYmd(s); return `${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]})`; }
+function daysAhead(s){ return Math.round((parseYmd(s) - todayJST())/86400000); }
+function gradeOf(score){
+  if(score >= 80) return {mark:'◎', color:'var(--g5)', label:'好条件'};
+  if(score >= 60) return {mark:'○', color:'var(--g4)', label:'良好'};
+  if(score >= 40) return {mark:'△', color:'var(--g3)', label:'微妙'};
+  if(score >= 20) return {mark:'×', color:'var(--g2)', label:'厳しい'};
+  return {mark:'×', color:'var(--g1)', label:'不適'};
+}
+function confidenceOf(s){ const d = daysAhead(s); return d <= 3 ? '信頼度:高' : d <= 7 ? '信頼度:中' : '信頼度:低'; }
+function wxIcon(code){
+  if(code == null) return '–';
+  if(code >= 95) return '⛈️';
+  if(code >= 71 && code <= 86 && !(code >= 80 && code <= 82)) return '🌨️';
+  if(code >= 51) return '🌧️';
+  if(code >= 45) return '🌫️';
+  if(code >= 3) return '☁️';
+  if(code >= 1) return '⛅';
+  return '☀️';
+}
+
+/* =========================================================
+   状態
+   ========================================================= */
+const state = {
+  areas: store.get('ccf.areas', null) || DEFAULT_AREAS.map(a => ({...a})),
+  activity: store.get('ccf.activity', 'boulder'),
+  customDates: store.get('ccf.customDates', []),
+  view: store.get('ccf.view', 'rank'),
+  focusDate: null,
+  data: null,        // {fetchedAt, key, series:{areaId:[hour...]}}
+  loading: false,
+  error: null,
+};
+if(!ACTIVITIES[state.activity]) state.activity = 'boulder';
+function saveAreas(){ store.set('ccf.areas', state.areas); }
+
+function autoDates(){
+  const t = todayJST(), w = t.getDay(), out = [];
+  if(w === 6){ out.push(t, addDays(t,1)); }
+  else if(w === 0){ out.push(t, addDays(t,6), addDays(t,7)); }
+  else { const toSat = 6 - w; out.push(addDays(t,toSat), addDays(t,toSat+1)); }
+  return out.map(ymd);
+}
+function allDates(){
+  const today = ymd(todayJST());
+  const max = ymd(addDays(todayJST(), FORECAST_DAYS-1));
+  state.customDates = state.customDates.filter(d => d >= today && d <= max);
+  store.set('ccf.customDates', state.customDates);
+  return [...new Set([...autoDates(), ...state.customDates])].sort();
+}
+
+/* =========================================================
+   データ取得
+   ========================================================= */
+function dataKey(){ return state.areas.map(a => `${a.id}:${a.lat},${a.lon},${a.elev}`).join('|'); }
+
+async function fetchWeather(force=false){
+  const key = dataKey();
+  if(!state.areas.length){ state.data = null; render(); return; }
+  const cached = store.get('ccf.cache', null);
+  if(!force && cached && cached.key === key && Date.now() - cached.fetchedAt < 30*60000){
+    state.data = cached; state.error = null; render(); return;
+  }
+  if(cached && cached.key === key && !state.data){ state.data = cached; }
+  state.loading = true; state.error = null; render();
+  try{
+    const p = new URLSearchParams({
+      latitude: state.areas.map(a => a.lat).join(','),
+      longitude: state.areas.map(a => a.lon).join(','),
+      elevation: state.areas.map(a => (a.elev ?? '') === '' ? 'nan' : a.elev).join(','),
+      hourly: HOURLY.join(','),
+      past_days: PAST_DAYS, forecast_days: FORECAST_DAYS,
+      timezone: 'Asia/Tokyo', wind_speed_unit: 'ms',
+    });
+    const res = await fetch('https://api.open-meteo.com/v1/forecast?' + p.toString());
+    const json = await res.json();
+    if(!res.ok || json.error) throw new Error(json.reason || `HTTP ${res.status}`);
+    const arr = Array.isArray(json) ? json : [json];
+    const series = {};
+    state.areas.forEach((a, i) => { series[a.id] = toHours(arr[i].hourly); });
+    state.data = {fetchedAt: Date.now(), key, series};
+    store.set('ccf.cache', state.data);
+  }catch(e){
+    state.error = '天気データを取得できませんでした(' + e.message + ')。' + (state.data ? '前回取得したデータを表示しています。' : '');
+  }finally{
+    state.loading = false; render();
+  }
+}
+
+function toHours(h){
+  return h.time.map((t, i) => ({
+    t, date: t.slice(0,10), h: +t.slice(11,13),
+    temp: h.temperature_2m[i], rh: h.relative_humidity_2m[i], dew: h.dew_point_2m[i],
+    pp: h.precipitation_probability ? h.precipitation_probability[i] : null,
+    pr: h.precipitation[i], wc: h.weather_code[i], cc: h.cloud_cover[i],
+    ws: h.wind_speed_10m[i], wg: h.wind_gusts_10m[i], sw: h.shortwave_radiation[i],
+    et0: h.et0_fao_evapotranspiration[i], cape: h.cape ? h.cape[i] : null,
+  }));
+}
+
+/* =========================================================
+   モデル:岩の濡れ量・沢の増水指標
+   ========================================================= */
+// 濡れ量 w(mm相当):降水で増え、蒸発散(ET0)・日射・風で減る。
+function wetnessSeries(area, hours){
+  const rock = ROCKS[area.rock] || ROCKS.other;
+  const asp = (ASPECTS[area.aspect] || ASPECTS.MIX).f;
+  const can = (CANOPY[area.canopy] || CANOPY.partial).f;
+  let w = 0; const out = [];
+  for(const x of hours){
+    const pr = x.pr || 0, et0 = x.et0 || 0, ws = x.ws || 0;
+    const sun = (x.sw || 0) > 50 ? asp : 1;
+    let d = rock.dry * can * (0.05 + 3.0 * et0 * sun + 0.01 * ws);
+    if(pr === 0 && (x.rh ?? 0) >= 96) d *= 0.2;            // 霧・結露でほぼ乾かない
+    w = clamp(w + pr * rock.absorb - d, 0, 15);
+    out.push(w);
+  }
+  return out;
+}
+// 増水指標:24時間の時定数で減衰させた先行降水の積算(mm)
+function floodSeries(hours){
+  let f = 0; const k = Math.exp(-1/24); const out = [];
+  for(const x of hours){ f = f * k + (x.pr || 0); out.push(f); }
+  return out;
+}
+
+/* =========================================================
+   評価
+   ========================================================= */
+function trap(v, ideal, ok){
+  if(v >= ideal[0] && v <= ideal[1]) return 100;
+  if(v < ok[0] || v > ok[1]) return 0;
+  return v < ideal[0] ? (v - ok[0]) / (ideal[0] - ok[0]) * 100 : (ok[1] - v) / (ok[1] - ideal[1]) * 100;
+}
+function wetScore(w){
+  if(w < 0.3) return 100;
+  if(w < 1) return 100 - (w - 0.3) / 0.7 * 30;
+  if(w < 3) return 70 - (w - 1) / 2 * 40;
+  if(w < 6) return 30 - (w - 3) / 3 * 30;
+  return 0;
+}
+function wetLabel(w){ return w < 0.3 ? '乾燥' : w < 1 ? 'ほぼ乾き' : w < 3 ? '湿り' : '濡れ'; }
+
+const derivedCache = new Map();
+function derived(area){
+  const hours = state.data?.series?.[area.id];
+  if(!hours) return null;
+  const k = area.id + '|' + state.data.fetchedAt + '|' + area.rock + area.aspect + area.canopy;
+  if(!derivedCache.has(k)) derivedCache.set(k, {hours, wet: wetnessSeries(area, hours), flood: floodSeries(hours)});
+  return derivedCache.get(k);
+}
+
+function evaluate(area, date, actKey){
+  const D = derived(area); if(!D) return null;
+  const act = ACTIVITIES[actKey];
+  const {hours, wet, flood} = D;
+  const idx = [];
+  hours.forEach((x, i) => { if(x.date === date && x.h >= act.window[0] && x.h < act.window[1]) idx.push(i); });
+  if(!idx.length || idx.some(i => hours[i].temp == null)) return null;
+  const W = idx.map(i => hours[i]);
+  const i0 = idx[0];
+  const reasons = [];
+  const R = (t, lvl) => reasons.push({t, lvl});
+
+  // --- 雷・降水
+  const ppMax = Math.max(...W.map(x => x.pp ?? 0));
+  const prSum = W.reduce((s,x) => s + (x.pr || 0), 0);
+  let thunder = null;
+  if(W.some(x => x.wc >= 95) || W.some(x => (x.cape ?? 0) >= 1500 && (x.pp ?? 0) >= 30)) thunder = 'high';
+  else if(W.some(x => (x.cape ?? 0) >= 700 && (x.pp ?? 0) >= 20)) thunder = 'mid';
+  let rainS = clamp(100 - ppMax * 0.7 - Math.min(50, prSum * 10));
+  if(thunder === 'mid') rainS = clamp(rainS - 20);
+  if(thunder === 'high') rainS = Math.min(rainS, 10);
+  if(thunder === 'high') R('雷リスク高', 'bad'); else if(thunder === 'mid') R('雷の可能性', 'warn');
+  if(prSum >= 1) R(`活動時間に雨 ${prSum.toFixed(1)}mm`, 'bad');
+  if(ppMax >= 50) R(`降水確率 ${ppMax}%`, 'bad'); else if(ppMax >= 30) R(`降水確率 ${ppMax}%`, 'warn');
+  else if(prSum < 0.2 && !thunder) R(`降水確率 ${ppMax}%`, 'good');
+
+  // 直近の先行降水
+  const before = hours.slice(Math.max(0, i0 - 72), i0);
+  const rain72 = before.reduce((s,x) => s + (x.pr || 0), 0);
+  const rain24 = before.slice(-24).reduce((s,x) => s + (x.pr || 0), 0);
+  const hasFullHistory = i0 >= 72;
+
+  // --- 岩の乾き or 増水
+  const comps = {rain: rainS};
+  const wStart = wet[i0], wMax = Math.max(...idx.map(i => wet[i]));
+  const fStart = flood[i0], fMax = Math.max(...idx.map(i => flood[i]));
+  if(act.rock){
+    const dryS = 0.6 * wetScore(wStart) + 0.4 * avg(idx.map(i => wetScore(wet[i])));
+    comps.dry = dryS;
+    if(rain72 >= 0.5) R(`直近72h雨 ${rain72.toFixed(rain72 < 10 ? 1 : 0)}mm`, rain24 >= 5 ? 'warn' : 'good');
+    if(wStart >= 3) R('岩:濡れ残り', 'bad');
+    else if(wStart >= 1) R('岩:湿り残り', 'warn');
+    else if(wStart >= 0.3) R('岩:ほぼ乾き', 'warn');
+    else if(rain72 >= 5) R('雨後だが乾く見込み', 'good');
+    else R('岩:乾燥', 'good');
+    if(area.rock === 'sandstone' && (wStart >= 0.3 || rain24 >= 2)) R('濡れた砂岩は脆い', 'bad');
+  } else {
+    const fx = Math.max(fStart, fMax);
+    const floodS = fx <= 8 ? 100 : fx <= 25 ? 100 - (fx - 8) / 17 * 60 : fx <= 50 ? 40 - (fx - 25) / 25 * 40 : 0;
+    comps.flood = floodS;
+    if(fx > 25) R(`増水リスク(先行雨 ${rain72.toFixed(0)}mm)`, 'bad');
+    else if(fx > 8) R(`水量やや多め(先行雨 ${rain72.toFixed(0)}mm)`, 'warn');
+    else R('水量:平常見込み', 'good');
+  }
+
+  // --- フリクション(沢は気温の快適さ)
+  const temps = W.map(x => x.temp);
+  const tMean = avg(temps), tMin = Math.min(...temps), tMax = Math.max(...temps);
+  const tempS = avg(temps.map(t => trap(t, act.temp.ideal, act.temp.ok)));
+  const rhMean = avg(W.map(x => x.rh ?? 70));
+  const spreadMin = Math.min(...W.map(x => (x.temp ?? 0) - (x.dew ?? -99)));
+  if(act.rock){
+    const rhS = rhMean <= 50 ? 100 : rhMean >= 90 ? 0 : 100 - (rhMean - 50) * 2.5;
+    const pen = spreadMin < 1.5 ? 30 : spreadMin < 3 ? 15 : 0;
+    comps.friction = clamp(0.6 * tempS + 0.4 * rhS - pen);
+    if(rhMean >= 80) R(`湿度 ${rhMean.toFixed(0)}%`, 'bad');
+    else if(rhMean >= 65) R(`湿度 ${rhMean.toFixed(0)}%`, 'warn');
+    else if(rhMean <= 50) R(`低湿度 ${rhMean.toFixed(0)}%`, 'good');
+    if(pen >= 30) R('結露しやすい', 'warn');
+  } else {
+    comps.friction = tempS;
+  }
+  if(tMean < act.temp.ok[0] + 2 || tMin < act.temp.ok[0]) R(`寒い(${tMin.toFixed(0)}〜${tMax.toFixed(0)}℃)`, 'bad');
+  else if(tMean < act.temp.ideal[0]) R(`気温低め ${tMean.toFixed(0)}℃`, 'warn');
+  else if(tMean > act.temp.ok[1] - 2) R(`暑い ${tMax.toFixed(0)}℃`, 'bad');
+  else if(tMean > act.temp.ideal[1]) R(`気温高め ${tMean.toFixed(0)}℃`, 'warn');
+  else R(`適温 ${tMean.toFixed(0)}℃`, 'good');
+
+  // --- 風
+  const gMax = Math.max(...W.map(x => x.wg ?? x.ws ?? 0));
+  const wsMean = avg(W.map(x => x.ws ?? 0));
+  const L = act.windLimit;
+  comps.wind = gMax <= L * 0.5 ? 100 : gMax >= L * 1.5 ? 0 : 100 - (gMax - L * 0.5) / L * 100;
+  if(gMax >= L) R(`突風 ${gMax.toFixed(0)}m/s`, 'bad');
+  else if(gMax >= L * 0.7) R(`風やや強い ${gMax.toFixed(0)}m/s`, 'warn');
+
+  // --- 総合
+  let score = 0;
+  for(const [k, w] of Object.entries(act.weights)) score += w * (comps[k] ?? 0);
+  if(thunder === 'high') score = Math.min(score, 20);
+  else if(thunder === 'mid') score = Math.min(score, 50);
+  if(prSum >= 5) score = Math.min(score, 25); else if(prSum >= 1) score = Math.min(score, 50);
+  // 岩が濡れている日は乾き具合に応じて段階的に上限をかける(0→20点 … 50→60点)
+  if(act.rock && actKey !== 'alpine' && comps.dry < 50) score = Math.min(score, 20 + comps.dry * 0.8);
+  if(!act.rock && comps.flood < 40) score = Math.min(score, 35);
+  if(!act.rock && (tMean < act.temp.ok[0] + 2 || tMin < act.temp.ok[0])) score = Math.min(score, 45);   // 寒い日の沢は低体温リスク
+  if(gMax >= L * 1.5) score = Math.min(score, 30);
+  score = Math.round(clamp(score));
+
+  const order = {bad:0, warn:1, good:2};
+  reasons.sort((a,b) => order[a.lvl] - order[b.lvl]);
+  return {
+    score, grade: gradeOf(score), comps, reasons, thunder,
+    stats: {tMin, tMax, tMean, rhMean, ppMax, prSum, gMax, wsMean, rain72, rain24, wStart, fStart,
+      wc: Math.max(...W.map(x => x.wc ?? 0)), hasFullHistory},
+    conf: confidenceOf(date),
+  };
+}
+
+/* =========================================================
+   描画
+   ========================================================= */
+function ringSVG(score, size){
+  const r = size/2 - 5, c = 2 * Math.PI * r, g = gradeOf(score);
+  return `<svg width="${size}" height="${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--chip)" stroke-width="6"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${g.color}" stroke-width="6" stroke-linecap="round"
+    stroke-dasharray="${c * score/100} ${c}"/></svg>`;
+}
+function ring(score, cls=''){
+  const g = gradeOf(score);
+  return `<div class="ring ${cls}">${ringSVG(score, cls ? 84 : 62)}<div class="num"><b>${score}</b><span style="color:${g.color}">${g.mark}</span></div></div>`;
+}
+function reasonChips(rs, limit=99){ return rs.slice(0, limit).map(r => `<span class="r ${r.lvl}">${esc(r.t)}</span>`).join(''); }
+function areasForAct(){ return state.areas.filter(a => !a.acts || !a.acts.length || a.acts.includes(state.activity)); }
+
+function render(){
+  // アクティビティ
+  $('#actChips').innerHTML = Object.entries(ACTIVITIES).map(([k,a]) =>
+    `<button class="chip ${k === state.activity ? 'on' : ''}" data-act="${k}">${a.label}</button>`).join('');
+  // 日付
+  const dates = allDates();
+  if(!state.focusDate || !dates.includes(state.focusDate)) state.focusDate = dates[0];
+  const auto = autoDates();
+  $('#dateChips').innerHTML = dates.map(d => {
+    const custom = state.customDates.includes(d) && !auto.includes(d);
+    return `<button class="chip ${d === state.focusDate ? 'on' : ''}" data-date="${d}">${fmtDate(d)}${custom ? `<span class="x" data-rm="${d}">✕</span>` : ''}</button>`;
+  }).join('');
+  const t = todayJST();
+  $('#dateInput').min = ymd(t); $('#dateInput').max = ymd(addDays(t, FORECAST_DAYS-1));
+  // ビュー
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === state.view));
+  // ステータス
+  const s = state.loading ? '取得中…' : state.data ? `更新 ${new Date(state.data.fetchedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}` : '';
+  $('#status').textContent = s;
+  $('#btnRefresh').classList.toggle('spin', state.loading);
+  const act = ACTIVITIES[state.activity];
+  $('#subtitle').textContent = `${act.label}:${act.window[0]}〜${act.window[1]}時の条件で評価`;
+  // 通知
+  let n = '';
+  if(state.error) n += `<div class="notice err">${esc(state.error)}</div>`;
+  if(state.view === 'rank' && state.focusDate && daysAhead(state.focusDate) >= 8) n += `<div class="notice">${fmtDate(state.focusDate)}は${daysAhead(state.focusDate)}日先のため予報の精度が低めです。傾向の目安として見てください。</div>`;
+  $('#notices').innerHTML = n;
+
+  const areas = areasForAct();
+  if(!state.areas.length){ $('#main').innerHTML = `<div class="empty">エリアが登録されていません<br><button class="btn primary" data-open-areas>エリアを追加</button></div>`; return; }
+  if(!areas.length){ $('#main').innerHTML = `<div class="empty">「${act.label}」に対応するエリアがありません<br><button class="btn primary" data-open-areas>エリアを追加・設定</button></div>`; return; }
+  if(!state.data){ $('#main').innerHTML = `<div class="empty">${state.loading ? '天気データを取得しています…' : 'データがありません'}</div>`; return; }
+
+  if(state.view === 'rank') renderRank(areas); else renderMatrix(areas, dates);
+}
+
+function renderRank(areas){
+  const d = state.focusDate;
+  const rows = areas.map(a => ({a, e: evaluate(a, d, state.activity)}))
+    .sort((x,y) => (y.e?.score ?? -1) - (x.e?.score ?? -1));
+  $('#main').innerHTML = `<div class="cards">${rows.map((r, i) => {
+    if(!r.e) return `<div class="card" style="cursor:default"><div class="ring"></div><div><h3>${esc(r.a.name)}</h3><div class="meta">この日の予報データがありません</div></div></div>`;
+    const e = r.e, st = e.stats, act = ACTIVITIES[state.activity];
+    const cond = act.rock ? `岩:${wetLabel(st.wStart)}` : `先行雨 ${st.rain72.toFixed(0)}mm`;
+    return `<button class="card" data-detail="${r.a.id}" data-d="${d}">
+      ${ring(e.score)}
+      <div>
+        <h3><span class="rank">${i+1}位</span>${esc(r.a.name)} <span class="conf">${e.conf.replace('信頼度:','信頼度 ')}</span></h3>
+        <div class="meta"><span>${wxIcon(st.wc)} ${st.tMin.toFixed(0)}〜${st.tMax.toFixed(0)}℃</span><span>☂ ${st.ppMax}%</span><span>💧${st.rhMean.toFixed(0)}%</span><span>${cond}</span></div>
+        <div class="reasons">${reasonChips(e.reasons, 5)}</div>
+      </div></button>`;
+  }).join('')}</div>
+  <div class="legend"><span><i style="background:var(--g5)"></i>◎ 80+</span><span><i style="background:var(--g4)"></i>○ 60+</span><span><i style="background:var(--g3)"></i>△ 40+</span><span><i style="background:var(--g2)"></i>× 20+</span><span><i style="background:var(--g1)"></i>× 不適</span></div>`;
+}
+
+function renderMatrix(areas, dates){
+  const head = dates.map(d => `<th>${fmtDate(d)}<br><span style="font-weight:500">${daysAhead(d) >= 8 ? '精度低' : ''}</span></th>`).join('');
+  const body = areas.map(a => `<tr><td class="area">${esc(a.name)}</td>${dates.map(d => {
+    const e = evaluate(a, d, state.activity);
+    if(!e) return `<td><span class="cell na">–</span></td>`;
+    return `<td><button class="cell" style="background:${e.grade.color}" data-detail="${a.id}" data-d="${d}">${e.grade.mark} ${e.score}<small>${wxIcon(e.stats.wc)} ${e.stats.tMax.toFixed(0)}℃ ☂${e.stats.ppMax}%</small></button></td>`;
+  }).join('')}</tr>`).join('');
+  $('#main').innerHTML = `<div class="matrix-wrap"><table class="matrix"><thead><tr><th class="area">エリア</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+  <div class="legend">セルをタップすると時間別の詳細を表示します</div>`;
+}
+
+/* =========================================================
+   詳細シート
+   ========================================================= */
+let charts = [];
+let detailCtx = null;
+function openSheet(){ $('#sheet').classList.add('open'); $('#sheetBg').classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeSheet(){ $('#sheet').classList.remove('open'); $('#sheetBg').classList.remove('open'); document.body.style.overflow = ''; charts.forEach(c => c.destroy()); charts = []; detailCtx = null; }
+
+function availableDates(){
+  const t = todayJST(); return Array.from({length: FORECAST_DAYS}, (_, i) => ymd(addDays(t, i)));
+}
+function openDetail(areaId, date){
+  const area = state.areas.find(a => a.id === areaId); if(!area) return;
+  detailCtx = {areaId, date};
+  const e = evaluate(area, date, state.activity);
+  const act = ACTIVITIES[state.activity];
+  const ds = availableDates(), di = ds.indexOf(date);
+  $('#sheetTitle').innerHTML = `${esc(area.name)}<small>${fmtDate(date)}・${act.label}(${act.window[0]}〜${act.window[1]}時)</small>`;
+  $('#sheetTools').innerHTML = `<div class="daynav"><button class="iconbtn" data-nav="-1" ${di <= 0 ? 'disabled' : ''}>‹</button><button class="iconbtn" data-nav="1" ${di >= ds.length-1 ? 'disabled' : ''}>›</button></div>`;
+  charts.forEach(c => c.destroy()); charts = [];
+  if(!e){ $('#sheetBody').innerHTML = `<div class="empty">この日の予報データがありません</div>`; openSheet(); return; }
+  const st = e.stats;
+  const compLabels = act.rock
+    ? {rain:'雷・降水', dry:'岩の乾き', friction:'フリクション', wind:'風'}
+    : {rain:'雷・降水', flood:'増水', friction:'気温(快適さ)', wind:'風'};
+  const bars = Object.keys(act.weights).map(k => {
+    const v = Math.round(e.comps[k] ?? 0);
+    return `<div class="bar"><span>${compLabels[k]} <span style="color:var(--sub)">×${act.weights[k]}</span></span><div class="track"><div class="fill" style="width:${v}%;background:${gradeOf(v).color}"></div></div><b>${v}</b></div>`;
+  }).join('');
+  const rockInfo = `${(ROCKS[area.rock]||ROCKS.other).label}・${(ASPECTS[area.aspect]||ASPECTS.MIX).label}・${(CANOPY[area.canopy]||CANOPY.partial).label}`;
+  $('#sheetBody').innerHTML = `
+    <div class="panel"><div class="big">${ring(e.score, 'big-ring')}<div class="bars">${bars}</div></div>
+      <div style="margin-top:10px;font-size:13px"><b style="color:${e.grade.color}">${e.grade.mark} ${e.grade.label}</b> <span class="conf">${e.conf}</span></div>
+      <div class="reasons">${reasonChips(e.reasons)}</div>
+      ${!st.hasFullHistory ? '<div class="hint" style="margin-top:8px">※ 当日に近い日は過去の降水履歴が72時間に満たないため、乾き推定がやや楽観的になる場合があります。</div>' : ''}
+    </div>
+    <div class="panel"><h4>活動時間帯のサマリー</h4><div class="stats">
+      <div class="stat"><span>気温</span><b>${st.tMin.toFixed(1)}〜${st.tMax.toFixed(1)}℃</b></div>
+      <div class="stat"><span>平均湿度</span><b>${st.rhMean.toFixed(0)}%</b></div>
+      <div class="stat"><span>最大降水確率</span><b>${st.ppMax}%</b></div>
+      <div class="stat"><span>降水量</span><b>${st.prSum.toFixed(1)}mm</b></div>
+      <div class="stat"><span>最大瞬間風速</span><b>${st.gMax.toFixed(1)}m/s</b></div>
+      <div class="stat"><span>直近24h / 72h雨</span><b>${st.rain24.toFixed(0)} / ${st.rain72.toFixed(0)}mm</b></div>
+      ${act.rock ? `<div class="stat"><span>開始時の岩</span><b>${wetLabel(st.wStart)}(${st.wStart.toFixed(1)})</b></div>` : `<div class="stat"><span>増水指標</span><b>${st.fStart.toFixed(0)}</b></div>`}
+      <div class="stat"><span>天気</span><b>${wxIcon(st.wc)}</b></div>
+    </div></div>
+    <div class="panel"><h4>時間別の予報(${fmtDate(date)})</h4><div class="chartbox"><canvas id="c1"></canvas></div><div class="chartbox" style="height:150px;margin-top:8px"><canvas id="c1b"></canvas></div></div>
+    <div class="panel"><h4>${act.rock ? '岩の濡れ量の推移(3日前〜当日)' : '増水指標の推移(3日前〜当日)'}</h4><div class="chartbox" style="height:200px"><canvas id="c2"></canvas></div>
+      <div class="hint" style="margin-top:6px">${act.rock ? '濡れ量の目安:0.3未満=乾燥/1未満=ほぼ乾き/3未満=湿り/それ以上=濡れ。降水で増え、蒸発散量・日射・風で減るモデルで、岩質・向き・樹林で乾く速さを補正しています。' : '増水指標:先行降水を24時間の時定数で減衰させた積算値。8以下=平常、25超=増水リスク。流域の大きさや地質で実際の水量は大きく変わります。'}</div></div>
+    <div class="panel"><h4>エリア情報</h4><div style="font-size:13px;margin-bottom:8px">${esc(rockInfo)}・標高 ${area.elev ?? '-'}m${area.memo ? `<br>${esc(area.memo)}` : ''}</div>
+      <div class="links">
+        <a href="https://www.google.com/maps?q=${area.lat},${area.lon}" target="_blank" rel="noopener">Googleマップ</a>
+        <a href="https://www.windy.com/${area.lat}/${area.lon}?${area.lat},${area.lon},11" target="_blank" rel="noopener">Windy</a>
+        <a href="https://www.jma.go.jp/bosai/nowc/" target="_blank" rel="noopener">気象庁 雷ナウキャスト</a>
+        <a href="https://www.jma.go.jp/bosai/warning/" target="_blank" rel="noopener">警報・注意報</a>
+      </div></div>`;
+  openSheet();
+  drawCharts(area, date, act);
+}
+
+function windowShade(act){
+  return {id:'shade', beforeDraw(ch){
+    const xs = ch.scales.x, area = ch.chartArea; if(!xs) return;
+    const x0 = xs.getPixelForValue(act.window[0]), x1 = xs.getPixelForValue(act.window[1] - 1);
+    const pad = (xs.getPixelForValue(1) - xs.getPixelForValue(0)) / 2;
+    const c = ch.ctx; c.save(); c.fillStyle = 'rgba(111,174,63,.12)';
+    c.fillRect(x0 - pad, area.top, (x1 - x0) + pad*2, area.bottom - area.top); c.restore();
+  }};
+}
+function drawCharts(area, date, act){
+  if(typeof Chart === 'undefined'){
+    ['c1','c1b','c2'].forEach(id => { const el = document.getElementById(id); if(el) el.parentElement.innerHTML = '<div class="hint">グラフライブラリを読み込めませんでした。</div>'; });
+    return;
+  }
+  const D = derived(area);
+  const css = getComputedStyle(document.documentElement);
+  const ink = css.getPropertyValue('--sub').trim(), grid = css.getPropertyValue('--line').trim();
+  Chart.defaults.color = ink; Chart.defaults.font.size = 11; Chart.defaults.borderColor = grid;
+  const day = D.hours.map((x,i) => ({...x, i})).filter(x => x.date === date);
+  const labels = day.map(x => x.h);
+  const common = {responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index', intersect:false},
+    plugins:{legend:{labels:{boxWidth:10, boxHeight:10}}}};
+  charts.push(new Chart(document.getElementById('c1'), {
+    data:{labels, datasets:[
+      {type:'line', label:'気温℃', data:day.map(x => x.temp), borderColor:'#d9682b', backgroundColor:'#d9682b', yAxisID:'t', tension:.3, pointRadius:0, borderWidth:2},
+      {type:'line', label:'露点℃', data:day.map(x => x.dew), borderColor:'#c9a27a', borderDash:[4,3], yAxisID:'t', tension:.3, pointRadius:0, borderWidth:1.5},
+      {type:'line', label:'湿度%', data:day.map(x => x.rh), borderColor:'#3b82c4', backgroundColor:'#3b82c4', yAxisID:'p', tension:.3, pointRadius:0, borderWidth:2},
+    ]},
+    options:{...common, scales:{
+      x:{ticks:{maxRotation:0, autoSkip:false, callback:(v,i) => labels[i] % 3 === 0 ? labels[i] + '時' : ''}, grid:{display:false}},
+      t:{position:'left', title:{display:true, text:'℃'}},
+      p:{position:'right', min:0, max:100, grid:{display:false}, title:{display:true, text:'%'}},
+    }},
+    plugins:[windowShade(act)],
+  }));
+  charts.push(new Chart(document.getElementById('c1b'), {
+    data:{labels, datasets:[
+      {type:'bar', label:'降水mm', data:day.map(x => x.pr), backgroundColor:'#3b82c4', yAxisID:'r'},
+      {type:'line', label:'降水確率%', data:day.map(x => x.pp), borderColor:'#7b8fa6', yAxisID:'p', pointRadius:0, borderWidth:1.5, stepped:true},
+      {type:'line', label:'突風m/s', data:day.map(x => x.wg), borderColor:'#8a6fb3', yAxisID:'w', pointRadius:0, borderWidth:1.5, tension:.3},
+    ]},
+    options:{...common, scales:{
+      x:{ticks:{maxRotation:0, autoSkip:false, callback:(v,i) => labels[i] % 3 === 0 ? labels[i] + '時' : ''}, grid:{display:false}},
+      r:{position:'left', min:0, suggestedMax:3, title:{display:true, text:'mm'}},
+      p:{position:'right', min:0, max:100, grid:{display:false}, display:false},
+      w:{position:'right', min:0, suggestedMax:act.windLimit * 1.2, grid:{display:false}, title:{display:true, text:'m/s'}},
+    }},
+    plugins:[windowShade(act)],
+  }));
+  // 濡れ量 / 増水指標
+  const endIdx = day.length ? day[day.length-1].i : 0;
+  const startIdx = Math.max(0, endIdx - 24*4 + 1);
+  const rng = D.hours.slice(startIdx, endIdx + 1).map((x, k) => ({...x, i: startIdx + k}));
+  const vals = rng.map(x => act.rock ? D.wet[x.i] : D.flood[x.i]);
+  const l2 = rng.map(x => x.h === 0 ? fmtDate(x.date) : '');
+  charts.push(new Chart(document.getElementById('c2'), {
+    data:{labels:l2, datasets:[
+      {type:'line', label: act.rock ? '濡れ量' : '増水指標', data: vals, borderColor:'#2f6b4f', backgroundColor:'rgba(47,107,79,.15)', fill:true, yAxisID:'w', pointRadius:0, borderWidth:2, tension:.2},
+      {type:'bar', label:'降水mm', data: rng.map(x => x.pr), backgroundColor:'#3b82c4', yAxisID:'r'},
+    ]},
+    options:{...common, plugins:{...common.plugins, tooltip:{callbacks:{title:(it) => { const x = rng[it[0].dataIndex]; return `${fmtDate(x.date)} ${x.h}時`; }}}},
+      scales:{
+        x:{ticks:{autoSkip:false, maxRotation:0, callback:(v,i) => l2[i]}, grid:{color:(c) => l2[c.index] ? grid : 'transparent'}},
+        w:{position:'left', min:0, suggestedMax: act.rock ? 3 : 30},
+        r:{position:'right', min:0, suggestedMax:5, grid:{display:false}, title:{display:true, text:'mm'}},
+      }},
+  }));
+}
+
+/* =========================================================
+   エリア管理
+   ========================================================= */
+let editing = null;
+function openAreas(){
+  editing = null;
+  $('#sheetTitle').innerHTML = 'エリア管理<small>評価対象のエリアを追加・編集</small>';
+  $('#sheetTools').innerHTML = '';
+  renderAreaList(); openSheet();
+}
+function renderAreaList(){
+  $('#sheetBody').innerHTML = `
+    <div class="arealist">${state.areas.map(a => `<div class="item"><div><b>${esc(a.name)}</b>
+      <small>${(ROCKS[a.rock]||ROCKS.other).label}・${(ASPECTS[a.aspect]||ASPECTS.MIX).label}・${(CANOPY[a.canopy]||CANOPY.partial).label}・${a.elev ?? '-'}m<br>
+      ${(a.acts && a.acts.length ? a.acts : Object.keys(ACTIVITIES)).map(k => ACTIVITIES[k]?.label).filter(Boolean).join(' / ')}</small></div>
+      <button class="btn" data-edit="${a.id}">編集</button></div>`).join('') || '<div class="empty">エリアがありません</div>'}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn primary" data-edit="__new">+ エリアを追加</button>
+      <button class="btn" id="btnBackup">バックアップ / 復元</button>
+      <button class="btn" id="btnReset">初期エリアに戻す</button>
+    </div>
+    <p class="hint" style="margin-top:14px">エリア設定はこのブラウザに保存されます。別の端末で使うときは「バックアップ / 復元」でJSONをコピーして貼り付けてください。<br>初期エリアの座標は駐車場・キャンプ場付近の概略値です。よく行く岩場に合わせて調整してください。</p>`;
+}
+function renderAreaForm(a){
+  const isNew = !a;
+  a = a || {id:'', name:'', lat:'', lon:'', elev:'', rock:'granite', aspect:'MIX', canopy:'partial', acts:[], memo:''};
+  const opt = (obj, cur) => Object.entries(obj).map(([k,v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v.label}</option>`).join('');
+  $('#sheetTitle').innerHTML = `${isNew ? 'エリアを追加' : 'エリアを編集'}<small>座標・標高・乾きやすさの特性</small>`;
+  $('#sheetBody').innerHTML = `<form class="form" id="areaForm">
+    <label>地名で検索(座標・標高を自動入力)<div style="display:flex;gap:6px"><input id="geoQ" placeholder="例:瑞牆山、御岳渓谷"><button type="button" class="btn" id="geoBtn">検索</button></div></label>
+    <div class="results" id="geoRes"></div>
+    <label>エリア名<input name="name" required value="${esc(a.name)}"></label>
+    <label>座標(Googleマップの「35.90, 138.61」をそのまま貼り付け可)<input id="coordPaste" placeholder="緯度, 経度"></label>
+    <div class="row3">
+      <label>緯度<input name="lat" inputmode="decimal" required value="${a.lat}"></label>
+      <label>経度<input name="lon" inputmode="decimal" required value="${a.lon}"></label>
+      <label>標高 m<input name="elev" inputmode="numeric" value="${a.elev ?? ''}"></label>
+    </div>
+    <button type="button" class="btn" id="elevBtn">座標から標高を取得</button>
+    <p class="hint">アルパインは稜線や取付の標高を入れると、その高さの気温で評価します。</p>
+    <div class="row3">
+      <label>岩質<select name="rock">${opt(ROCKS, a.rock)}</select></label>
+      <label>向き<select name="aspect">${opt(ASPECTS, a.aspect)}</select></label>
+      <label>樹林<select name="canopy">${opt(CANOPY, a.canopy)}</select></label>
+    </div>
+    <label>対象アクティビティ(未選択なら全て)<div class="checks">${Object.entries(ACTIVITIES).map(([k,v]) =>
+      `<label><input type="checkbox" name="acts" value="${k}" ${a.acts?.includes(k) ? 'checked' : ''}>${v.label}</label>`).join('')}</div></label>
+    <label>メモ<input name="memo" value="${esc(a.memo || '')}" placeholder="例:雨後はスラブ側が早く乾く"></label>
+    <div id="formErr"></div>
+    <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+      <div>${isNew ? '' : `<button type="button" class="btn danger" id="delBtn">削除</button>`}</div>
+      <div style="display:flex;gap:8px"><button type="button" class="btn" id="cancelBtn">戻る</button><button type="submit" class="btn primary">保存</button></div>
+    </div>
+  </form>`;
+  const f = $('#areaForm');
+  $('#coordPaste').addEventListener('input', e => {
+    const m = e.target.value.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+    if(m){ f.lat.value = (+m[1]).toFixed(5); f.lon.value = (+m[2]).toFixed(5); }
+  });
+  $('#geoBtn').addEventListener('click', geoSearch);
+  $('#geoQ').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); geoSearch(); } });
+  $('#elevBtn').addEventListener('click', async () => {
+    const lat = parseFloat(f.lat.value), lon = parseFloat(f.lon.value);
+    if(isNaN(lat) || isNaN(lon)) return formErr('先に緯度・経度を入力してください');
+    try{
+      const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+      const j = await r.json(); if(j.elevation) f.elev.value = Math.round(j.elevation[0]);
+    }catch(e){ formErr('標高を取得できませんでした'); }
+  });
+  $('#cancelBtn').addEventListener('click', () => { editing = null; $('#sheetTitle').innerHTML = 'エリア管理<small>評価対象のエリアを追加・編集</small>'; renderAreaList(); });
+  if(!isNew) $('#delBtn').addEventListener('click', async () => {
+    if(await confirmDialog(`「${a.name}」を削除しますか?`)){
+      state.areas = state.areas.filter(x => x.id !== a.id); saveAreas();
+      editing = null; renderAreaList(); fetchWeather(true);
+    }
+  });
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    const lat = parseFloat(f.lat.value), lon = parseFloat(f.lon.value), elev = f.elev.value === '' ? null : Math.round(parseFloat(f.elev.value));
+    if(!f.name.value.trim()) return formErr('エリア名を入力してください');
+    if(isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return formErr('緯度・経度が正しくありません');
+    const obj = {
+      id: isNew ? 'a' + Date.now().toString(36) : a.id,
+      name: f.name.value.trim(), lat, lon, elev: (elev == null || isNaN(elev)) ? null : elev,
+      rock: f.rock.value, aspect: f.aspect.value, canopy: f.canopy.value,
+      acts: [...f.querySelectorAll('input[name=acts]:checked')].map(x => x.value), memo: f.memo.value.trim(),
+    };
+    if(isNew) state.areas.push(obj); else state.areas = state.areas.map(x => x.id === a.id ? obj : x);
+    saveAreas(); editing = null;
+    $('#sheetTitle').innerHTML = 'エリア管理<small>評価対象のエリアを追加・編集</small>';
+    renderAreaList(); fetchWeather(true);
+  });
+}
+function formErr(m){ $('#formErr').innerHTML = `<div class="notice err">${esc(m)}</div>`; }
+async function geoSearch(){
+  const q = $('#geoQ').value.trim(); if(!q) return;
+  $('#geoRes').innerHTML = '<div class="hint">検索中…</div>';
+  try{
+    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=ja&format=json`);
+    const j = await r.json();
+    const res = (j.results || []);
+    if(!res.length){ $('#geoRes').innerHTML = '<div class="hint">見つかりませんでした。山名・地名を変えるか、Googleマップの座標を貼り付けてください。</div>'; return; }
+    $('#geoRes').innerHTML = res.map((x, i) => `<button type="button" data-geo="${i}">${esc(x.name)} <span class="hint">${esc([x.admin1, x.admin2].filter(Boolean).join(' '))}・${x.elevation ?? '-'}m</span></button>`).join('');
+    $('#geoRes').querySelectorAll('[data-geo]').forEach(b => b.addEventListener('click', () => {
+      const x = res[+b.dataset.geo], f = $('#areaForm');
+      if(!f.name.value) f.name.value = x.name;
+      f.lat.value = x.latitude.toFixed(5); f.lon.value = x.longitude.toFixed(5);
+      if(x.elevation != null) f.elev.value = Math.round(x.elevation);
+      $('#geoRes').innerHTML = '';
+    }));
+  }catch(e){ $('#geoRes').innerHTML = '<div class="hint">検索に失敗しました</div>'; }
+}
+function renderBackup(){
+  $('#sheetTitle').innerHTML = 'バックアップ / 復元<small>エリア設定をJSONで受け渡し</small>';
+  $('#sheetBody').innerHTML = `<div class="form">
+    <label>現在の設定(コピーしてメモ等に保存)<textarea id="bkOut" rows="8" readonly>${esc(JSON.stringify(state.areas, null, 1))}</textarea></label>
+    <button class="btn" id="bkCopy">コピー</button>
+    <label>復元(JSONを貼り付け)<textarea id="bkIn" rows="6" placeholder="[ { &quot;name&quot;: ... } ]"></textarea></label>
+    <div id="formErr"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="bkBack">戻る</button><button class="btn primary" id="bkApply">復元する</button></div>
+  </div>`;
+  $('#bkCopy').addEventListener('click', async () => {
+    try{ await navigator.clipboard.writeText($('#bkOut').value); $('#bkCopy').textContent = 'コピーしました'; }
+    catch(e){ $('#bkOut').select(); $('#bkCopy').textContent = '選択しました(手動でコピー)'; }
+  });
+  $('#bkBack').addEventListener('click', () => { $('#sheetTitle').innerHTML = 'エリア管理<small>評価対象のエリアを追加・編集</small>'; renderAreaList(); });
+  $('#bkApply').addEventListener('click', async () => {
+    let arr; try{ arr = JSON.parse($('#bkIn').value); }catch(e){ return formErr('JSONとして読み込めませんでした'); }
+    if(!Array.isArray(arr) || !arr.every(x => x && x.name && isFinite(x.lat) && isFinite(x.lon))) return formErr('エリアの配列(name, lat, lon を含む)ではありません');
+    if(!(await confirmDialog(`${arr.length}件のエリアで現在の設定を置き換えますか?`))) return;
+    state.areas = arr.map((x, i) => ({id: x.id || 'a' + Date.now().toString(36) + i, name: String(x.name), lat: +x.lat, lon: +x.lon,
+      elev: x.elev == null ? null : +x.elev, rock: ROCKS[x.rock] ? x.rock : 'other', aspect: ASPECTS[x.aspect] ? x.aspect : 'MIX',
+      canopy: CANOPY[x.canopy] ? x.canopy : 'partial', acts: Array.isArray(x.acts) ? x.acts.filter(k => ACTIVITIES[k]) : [], memo: x.memo || ''}));
+    saveAreas(); $('#sheetTitle').innerHTML = 'エリア管理<small>評価対象のエリアを追加・編集</small>'; renderAreaList(); fetchWeather(true);
+  });
+}
+function confirmDialog(msg){
+  return new Promise(res => {
+    $('#dialogMsg').textContent = msg; $('#dialog').classList.add('open');
+    const done = v => { $('#dialog').classList.remove('open'); $('#dialogYes').onclick = $('#dialogNo').onclick = null; res(v); };
+    $('#dialogYes').onclick = () => done(true); $('#dialogNo').onclick = () => done(false);
+  });
+}
+
+/* =========================================================
+   イベント
+   ========================================================= */
+document.addEventListener('click', async e => {
+  const t = e.target.closest('button, span[data-rm]'); if(!t) return;
+  if(t.dataset.rm){ e.stopPropagation(); state.customDates = state.customDates.filter(d => d !== t.dataset.rm); store.set('ccf.customDates', state.customDates); render(); return; }
+  if(t.dataset.act){ state.activity = t.dataset.act; store.set('ccf.activity', state.activity); render(); return; }
+  if(t.dataset.date){ state.focusDate = t.dataset.date; if(state.view !== 'rank'){ state.view = 'rank'; store.set('ccf.view','rank'); } render(); return; }
+  if(t.dataset.v){ state.view = t.dataset.v; store.set('ccf.view', state.view); render(); return; }
+  if(t.dataset.detail){ openDetail(t.dataset.detail, t.dataset.d); return; }
+  if(t.dataset.nav && detailCtx){ const ds = availableDates(); const i = ds.indexOf(detailCtx.date) + (+t.dataset.nav); if(ds[i]) openDetail(detailCtx.areaId, ds[i]); return; }
+  if(t.hasAttribute('data-open-areas')){ openAreas(); return; }
+  if(t.dataset.edit){ editing = t.dataset.edit; renderAreaForm(editing === '__new' ? null : state.areas.find(a => a.id === editing)); return; }
+  if(t.id === 'btnBackup'){ renderBackup(); return; }
+  if(t.id === 'btnReset'){ if(await confirmDialog('エリア設定を初期状態(4エリア)に戻しますか?追加したエリアは消えます。')){ state.areas = DEFAULT_AREAS.map(a => ({...a})); saveAreas(); renderAreaList(); fetchWeather(true); } return; }
+});
+$('#btnAreas').addEventListener('click', openAreas);
+$('#btnRefresh').addEventListener('click', () => fetchWeather(true));
+$('#sheetClose').addEventListener('click', closeSheet);
+$('#sheetBg').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSheet(); });
+function addCustom(d){ if(!d) return; if(!state.customDates.includes(d)) state.customDates.push(d); store.set('ccf.customDates', state.customDates); state.focusDate = d; render(); }
+$('#addToday').addEventListener('click', () => addCustom(ymd(todayJST())));
+$('#addTomorrow').addEventListener('click', () => addCustom(ymd(addDays(todayJST(), 1))));
+$('#dateInput').addEventListener('change', e => { addCustom(e.target.value); e.target.value = ''; });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') fetchWeather(false); });
+
+render();
+fetchWeather(false);
+</script>
+</body>
+</html>
